@@ -56,6 +56,8 @@ enum class SystemCallbackType : uint16_t {
   PerformDebugDump,
   TimerPoolTick,
   AudioHandleDataEvent,
+  WifiHandleFailedRanging,
+  WifiHandleRangingEvent,
 };
 
 //! The function signature of a system callback mirrors the CHRE event free
@@ -116,8 +118,11 @@ class EventLoopManager : public NonCopyable {
    * @param data Arbitrary data to provide to the callback
    * @param callback Function to invoke from within the
    */
-  bool deferCallback(SystemCallbackType type, void *data,
-                     SystemCallbackFunction *callback);
+  void deferCallback(SystemCallbackType type, void *data,
+                     SystemCallbackFunction *callback) {
+    mEventLoop.postEvent(static_cast<uint16_t>(type), data, callback,
+                         kSystemInstanceId, kSystemInstanceId);
+  }
 
   /**
    * Returns a guaranteed unique instance identifier to associate with a newly
@@ -221,7 +226,7 @@ class EventLoopManager : public NonCopyable {
   //! manages the state of the GNSS subsystem that the runtime subscribes to.
   GnssRequestManager mGnssRequestManager;
 
-  //! Handles communications with the host processor
+  //! Handles communications with the host processor.
   HostCommsManager mHostCommsManager;
 
   //! The SensorRequestManager that handles requests for all nanoapps. This

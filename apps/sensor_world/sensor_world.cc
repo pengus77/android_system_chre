@@ -93,6 +93,11 @@ SensorState sensors[] = {
     .interval = Seconds(2).toRawNanoseconds(),
     .latency = 0,
   },
+  { .type = CHRE_SENSOR_TYPE_GEOMAGNETIC_FIELD_TEMPERATURE,
+    .enable = kEnableDefault,
+    .interval = Seconds(2).toRawNanoseconds(),
+    .latency = 0,
+  },
   { .type = CHRE_SENSOR_TYPE_UNCALIBRATED_ACCELEROMETER,
     .enable = kEnableDefault,
     .interval = Milliseconds(80).toRawNanoseconds(),
@@ -137,7 +142,7 @@ bool nanoappStart() {
   for (size_t i = 0; i < ARRAY_SIZE(sensors); i++) {
     SensorState& sensor = sensors[i];
     sensor.isInitialized = chreSensorFindDefault(sensor.type, &sensor.handle);
-    LOGI("Sensor %d initialized: %s with handle %" PRIu32,
+    LOGI("Sensor %zu initialized: %s with handle %" PRIu32,
          i, sensor.isInitialized ? "true" : "false", sensor.handle);
 
     if (sensor.type == CHRE_SENSOR_TYPE_INSTANT_MOTION_DETECT) {
@@ -203,15 +208,18 @@ void nanoappHandleEvent(uint32_t senderInstanceId,
       y /= header.readingCount;
       z /= header.readingCount;
 
-      LOGI("%s, %d samples: %f %f %f",
-           getSensorNameForEventType(eventType), header.readingCount, x, y, z);
+      LOGI("%s, %d samples: %f %f %f, t=%" PRIu64 " ms",
+           getSensorNameForEventType(eventType), header.readingCount, x, y, z,
+           header.baseTimestamp / kOneMillisecondInNanoseconds);
 
       if (eventType == CHRE_EVENT_SENSOR_UNCALIBRATED_GYROSCOPE_DATA) {
         LOGI("UncalGyro time: first %" PRIu64 " last %" PRIu64 " chre %" PRIu64
              " delta [%" PRId64 ", %" PRId64 "]ms",
              header.baseTimestamp, sampleTime, chreTime,
-             static_cast<int64_t>(header.baseTimestamp - chreTime) / 1000000,
-             static_cast<int64_t>(sampleTime - chreTime) / 1000000);
+             static_cast<int64_t>(header.baseTimestamp - chreTime)
+             / static_cast<int64_t>(kOneMillisecondInNanoseconds),
+             static_cast<int64_t>(sampleTime - chreTime)
+             / static_cast<int64_t>(kOneMillisecondInNanoseconds));
       }
       break;
     }
@@ -219,7 +227,8 @@ void nanoappHandleEvent(uint32_t senderInstanceId,
     case CHRE_EVENT_SENSOR_PRESSURE_DATA:
     case CHRE_EVENT_SENSOR_LIGHT_DATA:
     case CHRE_EVENT_SENSOR_ACCELEROMETER_TEMPERATURE_DATA:
-    case CHRE_EVENT_SENSOR_GYROSCOPE_TEMPERATURE_DATA: {
+    case CHRE_EVENT_SENSOR_GYROSCOPE_TEMPERATURE_DATA:
+    case CHRE_EVENT_SENSOR_GEOMAGNETIC_FIELD_TEMPERATURE_DATA: {
       const auto *ev = static_cast<const chreSensorFloatData *>(eventData);
       const auto header = ev->header;
 
@@ -229,8 +238,9 @@ void nanoappHandleEvent(uint32_t senderInstanceId,
       }
       v /= header.readingCount;
 
-      LOGI("%s, %d samples: %f",
-           getSensorNameForEventType(eventType), header.readingCount, v);
+      LOGI("%s, %d samples: %f, t=%" PRIu64 " ms",
+           getSensorNameForEventType(eventType), header.readingCount, v,
+           header.baseTimestamp / kOneMillisecondInNanoseconds);
       break;
     }
 

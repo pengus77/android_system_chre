@@ -159,9 +159,6 @@ bool TimerPool::handleExpiredTimersAndScheduleNext() {
       success = EventLoopManagerSingleton::get()->getEventLoop().postEvent(
           CHRE_EVENT_TIMER, const_cast<void *>(currentTimerRequest.cookie),
           nullptr, kSystemInstanceId, currentTimerRequest.nanoappInstanceId);
-      if (!success) {
-        FATAL_ERROR("Failed to post timer event");
-      }
 
       // Reschedule the timer if needed, and release the current request.
       if (!currentTimerRequest.isOneShot) {
@@ -200,11 +197,8 @@ void TimerPool::handleSystemTimerCallback(void *timerPoolPtr) {
     }
   };
 
-  bool callbackDeferred = EventLoopManagerSingleton::get()->deferCallback(
+  EventLoopManagerSingleton::get()->deferCallback(
       SystemCallbackType::TimerPoolTick, timerPoolPtr, callback);
-  if (!callbackDeferred) {
-    FATAL_ERROR("Failed to defer timer callback");
-  }
 }
 
 }  // namespace chre

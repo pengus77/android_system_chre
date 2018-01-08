@@ -20,6 +20,7 @@
 #include "chre/platform/fatal_error.h"
 #include "chre/platform/host_link.h"
 #include "chre/platform/log.h"
+#include "chre/platform/slpi/system_time_util.h"
 #include "chre/platform/system_timer.h"
 
 extern "C" {
@@ -62,19 +63,7 @@ void setTimeSyncRequestTimer(Nanoseconds delay) {
 } // anonymous namespace
 
 Nanoseconds SystemTime::getMonotonicTime() {
-  constexpr uint64_t kClockFreq = 19200000;  // 19.2MHz QTimer clock
-
-  uint64_t ticks = uTimetick_Get();
-  uint64_t nsec = 0;
-  if (ticks >= kClockFreq) {
-    uint64_t seconds = (ticks / kClockFreq);
-    ticks %= kClockFreq;
-
-    nsec = (seconds * kOneSecondInNanoseconds);
-  }
-  nsec += (ticks * kOneSecondInNanoseconds) / kClockFreq;
-
-  return Nanoseconds(nsec);
+  return Nanoseconds(getNanosecondsFromQTimerTicks(uTimetick_Get()));
 }
 
 int64_t SystemTime::getEstimatedHostTimeOffset() {

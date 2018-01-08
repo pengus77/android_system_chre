@@ -17,6 +17,8 @@
 #ifndef CHRE_PLATFORM_SLPI_SYSTEM_TIME_H_
 #define CHRE_PLATFORM_SLPI_SYSTEM_TIME_H_
 
+#include <cstdint>
+
 namespace chre {
 
 /**

@@ -42,6 +42,11 @@ extern "C" {
 #include "chre/platform/slpi/smgr/smr_helper.h"
 #include "chre/util/macros.h"
 
+#ifdef CHREX_SENSOR_SUPPORT
+#include "chre/extensions/platform/slpi/smgr/platform_sensor_util.h"
+#include "chrex_variant_smgr_sensor_id.h"
+#endif  // CHREX_SENSOR_SUPPORT
+
 // As SMGR doesn't support passive sensor request, it's now implemented on the
 // client (CHRE) side using a combination of the SNS_SMGR_INTERNAL_API_V02 and a
 // modified SNS_SMGR_API_V01.
@@ -175,6 +180,10 @@ SensorType getSensorTypeFromSensorId(uint8_t sensorId, uint8_t dataType,
       return SensorType::StationaryDetect;
     } else if (sensorId == SNS_SMGR_ID_OEM_SENSOR_10_V01) {
       return SensorType::InstantMotion;
+#ifdef CHREX_SENSOR_SUPPORT
+    } else if (sensorId == CHREX_VENDOR_TYPE0_SENSOR_ID) {
+      return SensorType::VendorType0;
+#endif  // CHREX_SENSOR_SUPPORT
     }
   } else if (dataType == SNS_SMGR_DATA_TYPE_SECONDARY_V01) {
     if (sensorId >= SNS_SMGR_ID_ACCEL_V01
@@ -500,6 +509,13 @@ void *allocateAndPopulateEvent(
       return event;
     }
 
+#ifdef CHREX_SENSOR_SUPPORT
+    case SensorSampleType::Vendor0:
+      return allocateAndPopulateVendor0Event(
+          bufferingIndMsg, sensorType, sensorIndex,
+          populateSensorDataHeader, getNanosecondsFromSmgrTicks);
+#endif  // CHREX_SENSOR_SUPPORT
+
     default:
       LOGW("Unhandled sensor data %" PRIu8, static_cast<uint8_t>(sensorType));
       return nullptr;
@@ -565,13 +581,9 @@ void updateLastEvent(SensorType sensorType, const void *eventData) {
       };
 
       // Schedule a deferred callback.
-      if (!EventLoopManagerSingleton::get()->deferCallback(
-          SystemCallbackType::SensorLastEventUpdate, callbackData, callback)) {
-        LOGE("Failed to schedule a deferred callback for sensorType %d",
-             static_cast<int>(sensorType));
-        memoryFree(callbackData);
-      }
-    }  // if (callbackData == nullptr)
+      EventLoopManagerSingleton::get()->deferCallback(
+          SystemCallbackType::SensorLastEventUpdate, callbackData, callback);
+    }
   }
 }
 
@@ -614,8 +626,12 @@ void handleSensorDataIndication(
     } else {
       void *eventData = allocateAndPopulateEvent(
           bufferingIndMsg, sensorType, sensorIndex);
+      auto *header = static_cast< chreSensorDataHeader *>(eventData);
       if (eventData == nullptr) {
         LOGW("Dropping event due to allocation failure");
+      } else if (header->readingCount == 0) {
+        LOGW("Dropping zero readingCount event");
+        memoryFree(eventData);
       } else {
         // Schedule a deferred callback to update on-change sensor's last
         // event in the main thread.
@@ -623,7 +639,7 @@ void handleSensorDataIndication(
           updateLastEvent(sensorType, eventData);
         }
 
-        EventLoopManagerSingleton::get()->getEventLoop().postEvent(
+        EventLoopManagerSingleton::get()->getEventLoop().postEventOrFree(
             getSampleEventTypeForSensorType(sensorType), eventData,
             smgrSensorDataEventFree);
       }
@@ -828,11 +844,9 @@ void postSamplingStatusEvent(uint32_t instanceId, uint32_t sensorHandle,
     event->sensorHandle = sensorHandle;
     memcpy(&event->status, &status, sizeof(event->status));
 
-    if (!EventLoopManagerSingleton::get()->getEventLoop().postEvent(
-            CHRE_EVENT_SENSOR_SAMPLING_CHANGE, event, freeEventDataCallback,
-            kSystemInstanceId, instanceId)) {
-      LOGE("Failed to post sampling status change event");
-    }
+    EventLoopManagerSingleton::get()->getEventLoop().postEventOrFree(
+        CHRE_EVENT_SENSOR_SAMPLING_CHANGE, event, freeEventDataCallback,
+        kSystemInstanceId, instanceId);
   }
 }
 
@@ -903,11 +917,8 @@ void handleSensorStatusMonitorIndication(
 
     // Schedule a deferred callback to handle sensor status change in the main
     // thread.
-    if (!EventLoopManagerSingleton::get()->deferCallback(
-        SystemCallbackType::SensorStatusUpdate, callbackData, callback)) {
-      LOGE("Failed to schedule a deferred callback for status update");
-      memoryFree(callbackData);
-    }
+    EventLoopManagerSingleton::get()->deferCallback(
+        SystemCallbackType::SensorStatusUpdate, callbackData, callback);
   }
 }
 
@@ -1344,9 +1355,8 @@ bool removeAllPassiveRequests(uint8_t sensorId) {
 
 PlatformSensor::~PlatformSensor() {
   if (lastEvent != nullptr) {
-    LOGD("Releasing lastEvent: 0x%p, id %" PRIu8 ", type %" PRIu8 ", cal %"
-         PRIu8 ", size %zu",
-         lastEvent, sensorId, dataType, calType, lastEventSize);
+    LOGD("Releasing lastEvent: id %" PRIu8 ", type %" PRIu8 ", cal %" PRIu8
+         ", size %zu", sensorId, dataType, calType, lastEventSize);
     memoryFree(lastEvent);
   }
 }

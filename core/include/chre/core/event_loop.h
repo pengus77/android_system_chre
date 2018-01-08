@@ -127,7 +127,9 @@ class EventLoop : public NonCopyable {
 
   /**
    * Posts an event to a nanoapp that is currently running (or all nanoapps if
-   * the target instance ID is kBroadcastInstanceId).
+   * the target instance ID is kBroadcastInstanceId). If the senderInstanceId is
+   * kSystemInstanceId and the event fails to post, this is considered a fatal
+   * error.
    *
    * This function is safe to call from any thread.
    *
@@ -148,6 +150,16 @@ class EventLoop : public NonCopyable {
                  chreEventCompleteFunction *freeCallback,
                  uint32_t senderInstanceId = kSystemInstanceId,
                  uint32_t targetInstanceId = kBroadcastInstanceId);
+
+  /**
+   * Post an event to a nanoapp. If it fails, free the event with freeCallback.
+   *
+   * @see postEvent
+   */
+  bool postEventOrFree(uint16_t eventType, void *eventData,
+                       chreEventCompleteFunction *freeCallback,
+                       uint32_t senderInstanceId = kSystemInstanceId,
+                       uint32_t targetInstanceId = kBroadcastInstanceId);
 
   /**
    * Returns a pointer to the currently executing Nanoapp, or nullptr if none is
@@ -240,6 +252,10 @@ class EventLoop : public NonCopyable {
   //! The maximum number of events that can be active in the system.
   static constexpr size_t kMaxEventCount = 96;
 
+  //! The minimum number of events to reserve in the event pool for system
+  //! events.
+  static constexpr size_t kMinReservedSystemEventCount = 16;
+
   //! The maximum number of events that are awaiting to be scheduled. These
   //! events are in a queue to be distributed to apps.
   static constexpr size_t kMaxUnscheduledEventCount = 96;
@@ -280,6 +296,17 @@ class EventLoop : public NonCopyable {
 
   //! The maximum number of events ever waiting in the event pool.
   size_t mMaxEventPoolUsage = 0;
+
+  /**
+   * Allolcates an event from the event pool and post it.
+   *
+   * @return true if the event has been successfully allocated and posted.
+   *
+   * @see postEvent and postEventOrFree
+   */
+  bool allocateAndPostEvent(uint16_t eventType, void *eventData,
+    chreEventCompleteFunction *freeCallback, uint32_t senderInstanceId,
+    uint32_t targetInstanceId);
 
   /**
    * Do one round of Nanoapp event delivery, only considering events in
