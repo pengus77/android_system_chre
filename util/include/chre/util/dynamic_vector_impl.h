@@ -17,6 +17,8 @@
 #ifndef CHRE_UTIL_DYNAMIC_VECTOR_IMPL_H_
 #define CHRE_UTIL_DYNAMIC_VECTOR_IMPL_H_
 
+#include "chre/util/dynamic_vector.h"
+
 #include <memory>
 #include <new>
 #include <utility>
@@ -172,7 +174,7 @@ template<typename ElementType>
 bool DynamicVector<ElementType>::reserve(size_type newCapacity) {
   bool success = false;
 
-  CHRE_ASSERT_LOG(owns_data(), "Wrapped buffers can't be resized");
+  CHRE_ASSERT(owns_data());
   if (newCapacity <= mCapacity) {
     success = true;
   } else if (owns_data()) {
@@ -186,6 +188,21 @@ bool DynamicVector<ElementType>::reserve(size_type newCapacity) {
       mCapacity = newCapacity;
       success = true;
     }
+  }
+
+  return success;
+}
+
+template<typename ElementType>
+bool DynamicVector<ElementType>::resize(size_type newSize) {
+  // Remove elements from the back to minimize move operations.
+  while (mSize > newSize) {
+    pop_back();
+  }
+
+  bool success = true;
+  while (success && mSize < newSize) {
+    success = emplace_back();
   }
 
   return success;
