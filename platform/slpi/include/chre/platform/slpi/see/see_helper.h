@@ -49,6 +49,9 @@ class SeeHelperCallbackInterface {
   //! specified by sensorType.
   virtual void onSensorDataEvent(
       SensorType sensorType, UniquePtr<uint8_t>&& eventData) = 0;
+
+  //! Invoked by the SEE thread to update the AP wake/suspend status.
+  virtual void onHostWakeSuspendEvent(bool apAwake) = 0;
 };
 
 //! Default timeout for waitForService. Have a longer timeout since there may be
@@ -71,6 +74,17 @@ struct SeeAttributes {
   char type[kSeeAttrStrValLen];
   float maxSampleRate;
   uint8_t streamType;
+};
+
+//! A struct to store a sensor's calibration data
+struct SeeCalData {
+  float bias[3];
+  float scale[3];
+  float matrix[9];
+  bool hasBias;
+  bool hasScale;
+  bool hasMatrix;
+  uint8_t accuracy;
 };
 
 //! A struct to facilitate making sensor request
@@ -208,6 +222,13 @@ class SeeHelper : public NonCopyable {
    * @return true if cal sensor have been succcessfully initialized.
    */
   bool initCalSensors();
+
+  /**
+   * Initializes the SEE remote processor sensor and makes a data request.
+   *
+   * @return true if the remote proc sensor was successfully initialized.
+   */
+  bool initRemoteProcSensor();
 
   /**
    * Wrapper to send a QMI request and wait for the indication if it's a
