@@ -37,6 +37,9 @@ TARGET_CFLAGS += -fpic
 # Disable splitting double registers.
 TARGET_CFLAGS += -mllvm -disable-hsdr
 
+# Don't use small data section.
+TARGET_CFLAGS += -G0
+
 # Enable default visibility for FastRPC entry points.
 TARGET_CFLAGS += -D'__QAIC_SKEL_EXPORT=__attribute__((visibility("default")))'
 
@@ -60,6 +63,7 @@ TARGET_SO_LDFLAGS += --wrap=free
 TARGET_SO_LDFLAGS += --wrap=realloc
 TARGET_SO_LDFLAGS += --wrap=memalign
 TARGET_SO_LDFLAGS += --wrap=__stack_chk_fail
+TARGET_SO_LDFLAGS += --no-threads
 
 HEXAGON_LIB_PATH = $(HEXAGON_TOOLS_PREFIX)/Tools/target/hexagon/lib
 TARGET_SO_EARLY_LIBS += $(HEXAGON_LIB_PATH)/$(HEXAGON_ARCH)/G0/pic/initS.o
