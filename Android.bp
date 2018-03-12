@@ -91,6 +91,9 @@ cc_library_headers {
     vendor: true,
     export_include_dirs: [
         "external/flatbuffers/include",
+        "host/common/include",
+        "platform/shared/include",
+        "util/include",
     ],
 }
 
