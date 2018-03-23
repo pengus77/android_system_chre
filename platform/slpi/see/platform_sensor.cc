@@ -27,13 +27,21 @@
 #include "chre/platform/assert.h"
 #include "chre/platform/fatal_error.h"
 #include "chre/platform/log.h"
-#include "chre/platform/system_time.h"
+#include "chre/platform/shared/platform_sensor_util.h"
 #include "chre/platform/slpi/see/see_client.h"
 #include "chre/platform/slpi/see/see_helper.h"
+#include "chre/platform/system_time.h"
 
 #ifdef CHREX_SENSOR_SUPPORT
 #include "chre/extensions/platform/slpi/see/vendor_data_types.h"
 #endif  // CHREX_SENSOR_SUPPORT
+
+#ifndef CHRE_SEE_NUM_TEMP_SENSORS
+// There are usually more than one 'sensor_temperature' sensors in SEE.
+// Define this in the variant-specific makefile to avoid missing sensors in
+// sensor discovery.
+#error "CHRE_SEE_NUM_TEMP_SENSORS is not defined"
+#endif
 
 namespace chre {
 namespace {
@@ -111,56 +119,6 @@ SensorType getSensorTypeFromDataType(const char *dataType, bool calibrated) {
     sensorType = SensorType::Unknown;
   }
   return sensorType;
-}
-
-// TODO: refactor this out to a common helper function shared with SMGR.
-/**
- * A helper function that updates the last event of a sensor in the main thread.
- * Platform should call this function only for an on-change sensor.
- *
- * @param sensorType The SensorType of the sensor.
- * @param eventData A non-null pointer to the sensor's CHRE event data.
- */
-void updateLastEvent(SensorType sensorType, const void *eventData) {
-  CHRE_ASSERT(eventData);
-
-  auto *header = static_cast<const chreSensorDataHeader *>(eventData);
-  if (header->readingCount != 1) {
-    // TODO: better error handling when there are more than one samples.
-    LOGE("%" PRIu16 " samples in an event for on-change sensor %" PRIu8,
-         header->readingCount, static_cast<uint8_t>(sensorType));
-  } else {
-    struct CallbackData {
-      SensorType sensorType;
-      const ChreSensorData *event;
-    };
-    auto *callbackData = memoryAlloc<CallbackData>();
-    if (callbackData == nullptr) {
-      LOG_OOM();
-    } else {
-      callbackData->sensorType = sensorType;
-      callbackData->event = static_cast<const ChreSensorData *>(eventData);
-
-      auto callback = [](uint16_t /* type */, void *data) {
-        auto *cbData = static_cast<CallbackData *>(data);
-
-        Sensor *sensor = EventLoopManagerSingleton::get()
-            ->getSensorRequestManager().getSensor(cbData->sensorType);
-
-        // Mark last event as valid only if the sensor is enabled. Event data
-        // may arrive after sensor is disabled.
-        if (sensor != nullptr
-            && sensor->getRequest().getMode() != SensorMode::Off) {
-          sensor->setLastEvent(cbData->event);
-        }
-        memoryFree(cbData);
-      };
-
-      // Schedule a deferred callback.
-      EventLoopManagerSingleton::get()->deferCallback(
-          SystemCallbackType::SensorLastEventUpdate, callbackData, callback);
-    }
-  }
 }
 
 void seeSensorDataEventFree(uint16_t eventType, void *eventData) {
@@ -335,15 +293,10 @@ void addSensor(SensorType sensorType, const sns_std_suid& suid,
   strlcat(sensorName, " ", sizeof(sensorName));
   strlcat(sensorName, attr.name, sizeof(sensorName));
 
-  // TODO: remove when b/69719653 is resolved.
-  // Populate on-change sensor's max sample rate to 25Hz.
-  float maxSampleRate = sensorTypeIsOnChange(sensorType)
-      ? 25.0f : attr.maxSampleRate;
-
   // Override one-shot sensor's minInterval to default
   uint64_t minInterval = sensorTypeIsOneShot(sensorType) ?
       CHRE_SENSOR_INTERVAL_DEFAULT : static_cast<uint64_t>(
-          ceilf(Seconds(1).toRawNanoseconds() / maxSampleRate));
+          ceilf(Seconds(1).toRawNanoseconds() / attr.maxSampleRate));
 
   // Allocates memory for on-change sensor's last event.
   size_t lastEventSize;
@@ -391,9 +344,10 @@ bool isStreamTypeCorrect(SensorType sensorType, uint8_t streamType) {
  * Obtains the list of SUIDs and their attributes that support the specified
  * data type.
  */
-bool getSuidAndAttrs(const char *dataType, DynamicVector<SuidAttr> *suidAttrs) {
+bool getSuidAndAttrs(const char *dataType, DynamicVector<SuidAttr> *suidAttrs,
+                     uint8_t minNumSuids) {
   DynamicVector<sns_std_suid> suids;
-  bool success = getSeeHelper()->findSuidSync(dataType, &suids);
+  bool success = getSeeHelper()->findSuidSync(dataType, &suids, minNumSuids);
   if (!success) {
     LOGE("Failed to find sensor '%s'", dataType);
   } else {
@@ -428,10 +382,12 @@ bool getSuidAndAttrs(const char *dataType, DynamicVector<SuidAttr> *suidAttrs) {
   return success;
 }
 
-// When HW ID is absent, it's default to 0 and won't be a factor.
-bool vendorAndHwIdMatch(const SeeAttributes& attr0,
-                        const SeeAttributes& attr1) {
+// Check whether two sensors with the specified attrtibutes belong to the same
+// sensor hardware module.
+bool sensorHwMatch(const SeeAttributes& attr0, const SeeAttributes& attr1) {
+  // When HW ID is absent, it's default to 0 and won't be a factor.
   return ((strncmp(attr0.vendor, attr1.vendor, kSeeAttrStrValLen) == 0)
+          && (strncmp(attr0.name, attr1.name, kSeeAttrStrValLen) == 0)
           && (attr0.hwId == attr1.hwId));
 }
 
@@ -463,7 +419,8 @@ bool PlatformSensor::getSensors(DynamicVector<Sensor> *sensors) {
   CHRE_ASSERT(sensors);
 
   DynamicVector<SuidAttr> tempSensors;
-  if (!getSuidAndAttrs("sensor_temperature", &tempSensors)) {
+  if (!getSuidAndAttrs("sensor_temperature", &tempSensors,
+                       CHRE_SEE_NUM_TEMP_SENSORS)) {
       FATAL_ERROR("Failed to get temperature sensor UID and attributes");
   }
 
@@ -484,7 +441,7 @@ bool PlatformSensor::getSensors(DynamicVector<Sensor> *sensors) {
     }
 
     DynamicVector<SuidAttr> primarySensors;
-    if (!getSuidAndAttrs(dataType, &primarySensors)) {
+    if (!getSuidAndAttrs(dataType, &primarySensors, 1 /* minNumSuids */)) {
       FATAL_ERROR("Failed to get primary sensor UID and attributes");
     } else {
       for (const auto& primarySensor : primarySensors) {
@@ -512,7 +469,7 @@ bool PlatformSensor::getSensors(DynamicVector<Sensor> *sensors) {
               sns_std_suid tempSuid = tempSensor.suid;
               SeeAttributes tempAttr = tempSensor.attr;
 
-              if (vendorAndHwIdMatch(attr, tempAttr)) {
+              if (sensorHwMatch(attr, tempAttr)) {
                 LOGD("Found matching temperature sensor type");
                 tempFound = true;
                 addSensor(temperatureType, tempSuid, tempAttr, sensors);
