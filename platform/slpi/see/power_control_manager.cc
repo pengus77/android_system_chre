@@ -17,41 +17,14 @@
 #include "chre/platform/power_control_manager.h"
 
 #include "chre/platform/slpi/power_control_util.h"
+#include "chre/platform/slpi/see/island_vote_client.h"
+#include "chre/platform/system_time.h"
+#include "chre/util/lock_guard.h"
 
 namespace chre {
 
-PowerControlManagerBase::PowerControlManagerBase() {
-#ifdef CHRE_SLPI_UIMG_ENABLED
-  const char kClientName[] = "CHRE";
-  mClientHandle = sns_island_aggregator_register_client(kClientName);
-  if (mClientHandle == nullptr) {
-    FATAL_ERROR("Island aggregator client register failed");
-  }
-#endif // CHRE_SLPI_UIMG_ENABLED
-}
-
-PowerControlManagerBase::~PowerControlManagerBase() {
-#ifdef CHRE_SLPI_UIMG_ENABLED
-  sns_island_aggregator_deregister_client(mClientHandle);
-#endif // CHRE_SLPI_UIMG_ENABLED
-}
-
 bool PowerControlManagerBase::voteBigImage(bool bigImage) {
-#ifdef CHRE_SLPI_UIMG_ENABLED
-  sns_rc rc = bigImage
-      ? sns_island_block(mClientHandle) : sns_island_unblock(mClientHandle);
-
-  // TODO: (b/74524281) define success = (rc == SNS_RC_SUCCESS).
-  bool success = (rc != SNS_RC_FAILED);
-  if (!success) {
-    // Note that FATAL_ERROR must not be used here, because this can be called
-    // from preFatalError() (not that we should use it here regardless)
-    LOGE("Failed to vote for bigImage %d with result %d", bigImage, rc);
-  }
-  return success;
-#else
-  return true;
-#endif // CHRE_SLPI_UIMG_ENABLED
+  return IslandVoteClientSingleton::get()->voteBigImage(bigImage);
 }
 
 void PowerControlManagerBase::onHostWakeSuspendEvent(bool awake) {
@@ -66,7 +39,7 @@ void PowerControlManagerBase::onHostWakeSuspendEvent(bool awake) {
 
 void PowerControlManager::postEventLoopProcess(size_t numPendingEvents) {
   if (numPendingEvents == 0 && !slpiInUImage()) {
-    voteBigImage(false);
+    voteBigImage(false /* bigImage */);
   }
 }
 
