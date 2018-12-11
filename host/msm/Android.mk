@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-
+ifneq ($(BUILD_WITHOUT_VENDOR),true)
 ifeq ($(call is-vendor-board-platform,QCOM),true)
 ifeq ($(call is-board-platform-in-list,sdm845 sdm710), true)
 
@@ -61,5 +61,6 @@ endif
 
 include $(BUILD_EXECUTABLE)
 
+endif
 endif
 endif
