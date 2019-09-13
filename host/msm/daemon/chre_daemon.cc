@@ -44,6 +44,8 @@
 // TODO: use property_get_bool to make verbose logging runtime configurable
 // #define LOG_NDEBUG 0
 
+#undef ADSPRPC
+
 #include <ctype.h>
 #include <inttypes.h>
 #include <pthread.h>

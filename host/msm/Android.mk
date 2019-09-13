@@ -22,16 +22,12 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-
 LOCAL_MODULE := chre
 LOCAL_MODULE_TAGS := optional
 LOCAL_VENDOR_MODULE := true
 
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_CFLAGS += -Wall -Werror -Wextra
-
-FASTRPC_INC := $(TARGET_OUT_INTERMEDIATES)/include/fastrpc/inc
-LOCAL_ADDITIONAL_DEPENDENCIES ::= $(FASTRPC_INC)
 
 LOCAL_SRC_FILES := \
     ../../platform/shared/host_protocol_common.cc \
@@ -41,7 +37,14 @@ LOCAL_SRC_FILES := \
     daemon/generated/chre_slpi_stub.c
 
 LOCAL_C_INCLUDES := \
-    $(FASTRPC_INC) \
+    system/chre/util/include \
+    system/chre/host/common/include \
+    system/chre/platform/slpi/include \
+    system/chre/platform/shared/include \
+    system/chre/platform/slpi/include/chre/platform/slpi \
+    system/chre/hexagon/include \
+    system/chre/hexagon/include/stddef \
+    system/chre/hexagon/remote \
     system/chre/platform/slpi/include \
 
 LOCAL_HEADER_LIBRARIES := chre_flatbuffers
